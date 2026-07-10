@@ -344,41 +344,7 @@
     line-height: 1.4;
     margin-top: 6px;
   }
-  #proxy-config .pc-toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding-top: 10px;
-    border-top: 1px solid var(--border);
-    margin-top: 8px;
-  }
-  #proxy-config .pc-toggle-row span {
-    font-size: 12px;
-    color: var(--text-dim);
-  }
-  #proxy-config .pc-toggle-row .toggle-track {
-    width: 34px; height: 20px;
-    border-radius: 10px;
-    background: var(--border);
-    cursor: pointer;
-    position: relative;
-    transition: background var(--transition);
-  }
-  #proxy-config .pc-toggle-row .toggle-track.on {
-    background: #4a8a4a;
-  }
-  #proxy-config .pc-toggle-row .toggle-track .toggle-knob {
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 16px; height: 16px;
-    border-radius: 50%;
-    background: var(--text-dim);
-    transition: transform 0.2s ease, background var(--transition);
-  }
-  #proxy-config .pc-toggle-row .toggle-track.on .toggle-knob {
-    transform: translateX(14px);
-    background: #fff;
-  }
+
 
   /* ─── Content Area ─── */
   #content {
@@ -629,7 +595,7 @@
     <button class="nav-btn" id="nav-back" title="Back" aria-label="Go back">&#x2190;</button>
     <button class="nav-btn" id="nav-fwd" title="Forward" aria-label="Go forward">&#x2192;</button>
     <button class="nav-btn" id="nav-refresh" title="Refresh" aria-label="Refresh">&#x21bb;</button>
-    <button class="nav-btn proxy-btn" id="proxy-toggle" title="Proxy: Off">
+    <button class="nav-btn proxy-btn active" id="proxy-toggle" title="Proxy: On">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path class="shield-fill" d="M12 2l7 3v5c0 4-3 8-7 10-4-2-7-6-7-10V5l7-3z"/>
       </svg>
@@ -644,12 +610,6 @@
       <div class="pc-field">
         <label>Server URL</label>
         <input type="text" id="proxy-url-input" placeholder="https://pluto.a.jrnm.app" spellcheck="false">
-      </div>
-      <div class="pc-toggle-row">
-        <span>Proxy Active</span>
-        <div class="toggle-track" id="proxy-toggle-switch">
-          <div class="toggle-knob"></div>
-        </div>
       </div>
       <div class="pc-info">Routes all browsing through the proxy to keep your IP anonymous. Pages are fetched server-side and rewritten in real-time.</div>
     </div>
@@ -673,7 +633,6 @@
     let suppressSync = false;
 
     // ─── Proxy State ───
-    let proxyEnabled = false;
     let proxyServerUrl = 'https://pluto.a.jrnm.app';
 
     function loadProxyConfig() {
@@ -681,7 +640,6 @@
         const raw = localStorage.getItem(PROXY_KEY);
         if (raw) {
           const data = JSON.parse(raw);
-          proxyEnabled = !!data.enabled;
           if (data.serverUrl) proxyServerUrl = data.serverUrl.replace(/\/+$/, '');
         }
       } catch {}
@@ -689,12 +647,12 @@
 
     function saveProxyConfig() {
       try {
-        localStorage.setItem(PROXY_KEY, JSON.stringify({ enabled: proxyEnabled, serverUrl: proxyServerUrl }));
+        localStorage.setItem(PROXY_KEY, JSON.stringify({ serverUrl: proxyServerUrl }));
       } catch {}
     }
 
     function proxyUrl(url) {
-      if (!proxyEnabled || !proxyServerUrl || !url || url === 'about:start' || url.startsWith(proxyServerUrl)) return url;
+      if (!proxyServerUrl || !url || url === 'about:start' || url.startsWith(proxyServerUrl)) return url;
       return proxyServerUrl + '/proxy?url=' + encodeURIComponent(url);
     }
 
@@ -713,7 +671,7 @@
     const proxyToggle = $('proxy-toggle');
     const proxyConfig = $('proxy-config');
     const proxyUrlInput = $('proxy-url-input');
-    const proxyToggleSwitch = $('proxy-toggle-switch');
+
 
     let toastTimer = null;
 
@@ -1173,10 +1131,7 @@
 
     // ─── Proxy UI ───
     function updateProxyUI() {
-      proxyToggle.classList.toggle('active', proxyEnabled && !!proxyServerUrl);
-      proxyToggle.title = proxyEnabled && proxyServerUrl ? 'Proxy: On' : 'Proxy: Off';
       proxyUrlInput.value = proxyServerUrl;
-      proxyToggleSwitch.classList.toggle('on', proxyEnabled);
     }
 
     // ─── Address Bar Sync ───
@@ -1193,7 +1148,7 @@
       const displayUrl = tab.url === 'about:start' ? '' : tab.url;
       urlInput.value = displayUrl;
       urlInput.placeholder = 'Search or enter URL...';
-      if (proxyEnabled && proxyServerUrl && tab.url !== 'about:start') {
+      if (tab.url !== 'about:start') {
         urlIndicator.innerHTML = '<span style="color:#6bba6b;font-size:9px;display:flex;align-items:center;gap:3px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2l7 3v5c0 4-3 8-7 10-4-2-7-6-7-10V5l7-3z"/></svg>proxy</span>';
       } else {
         urlIndicator.innerHTML = '';
@@ -1341,14 +1296,6 @@
       }
     });
 
-    proxyToggleSwitch.addEventListener('click', () => {
-      proxyEnabled = !proxyEnabled;
-      saveProxyConfig();
-      updateProxyUI();
-      syncAddressBar();
-      toast(proxyEnabled ? 'Proxy enabled' : 'Proxy disabled');
-    });
-
     proxyUrlInput.addEventListener('change', () => {
       const val = proxyUrlInput.value.trim().replace(/\/+$/, '');
       if (val) {
@@ -1361,7 +1308,7 @@
 
     // ─── Iframe URL sync via postMessage ───
     window.addEventListener('message', (e) => {
-      if (e.data && e.data.type === 'pluto-url' && proxyEnabled) {
+      if (e.data && e.data.type === 'pluto-url') {
         const msgUrl = e.data.url;
         if (!msgUrl) return;
         // Extract the original URL from the proxy URL
