@@ -338,6 +338,23 @@
   #proxy-config .pc-field input::placeholder {
     color: var(--text-muted);
   }
+  #proxy-config .pc-field select {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xs);
+    color: var(--text);
+    font-size: 12px;
+    font-family: var(--font);
+    outline: none;
+    transition: border-color var(--transition);
+    cursor: pointer;
+    appearance: auto;
+  }
+  #proxy-config .pc-field select:focus {
+    border-color: #555;
+  }
   #proxy-config .pc-info {
     font-size: 11px;
     color: var(--text-muted);
@@ -611,7 +628,14 @@
         <label>Server URL</label>
         <input type="text" id="proxy-url-input" placeholder="https://pluto.a.jrnm.app" spellcheck="false">
       </div>
-      <div class="pc-info">Routes all browsing through the proxy to keep your IP anonymous. Pages are fetched server-side and rewritten in real-time.</div>
+      <div class="pc-field">
+        <label>Mode</label>
+        <select id="proxy-mode-select">
+          <option value="rewrite">Rewrite</option>
+          <option value="passthrough">Passthrough</option>
+        </select>
+      </div>
+      <div class="pc-info" id="proxy-mode-info"></div>
     </div>
   </div>
 
@@ -634,6 +658,7 @@
 
     // ─── Proxy State ───
     let proxyServerUrl = 'https://pluto.a.jrnm.app';
+    let proxyMode = 'rewrite';
 
     function loadProxyConfig() {
       try {
@@ -641,19 +666,20 @@
         if (raw) {
           const data = JSON.parse(raw);
           if (data.serverUrl) proxyServerUrl = data.serverUrl.replace(/\/+$/, '');
+          if (data.mode) proxyMode = data.mode;
         }
       } catch {}
     }
 
     function saveProxyConfig() {
       try {
-        localStorage.setItem(PROXY_KEY, JSON.stringify({ serverUrl: proxyServerUrl }));
+        localStorage.setItem(PROXY_KEY, JSON.stringify({ serverUrl: proxyServerUrl, mode: proxyMode }));
       } catch {}
     }
 
     function proxyUrl(url) {
       if (!proxyServerUrl || !url || url === 'about:start' || url.startsWith(proxyServerUrl)) return url;
-      return proxyServerUrl + '/proxy?url=' + encodeURIComponent(url);
+      return proxyServerUrl + '/proxy?url=' + encodeURIComponent(url) + '&mode=' + proxyMode;
     }
 
     // ─── DOM refs ───
@@ -671,6 +697,7 @@
     const proxyToggle = $('proxy-toggle');
     const proxyConfig = $('proxy-config');
     const proxyUrlInput = $('proxy-url-input');
+    const proxyModeSelect = $('proxy-mode-select');
 
 
     let toastTimer = null;
@@ -1132,6 +1159,17 @@
     // ─── Proxy UI ───
     function updateProxyUI() {
       proxyUrlInput.value = proxyServerUrl;
+      proxyModeSelect.value = proxyMode;
+      updateProxyModeInfo();
+    }
+
+    function updateProxyModeInfo() {
+      const info = $('proxy-mode-info');
+      if (proxyMode === 'rewrite') {
+        info.textContent = 'Rewrite: full URL rewriting + JS interceptor. Best compatibility, but binary assets may get corrupted through the proxy pipeline.';
+      } else {
+        info.textContent = 'Passthrough: only strips blocking headers and injects <base href>. Binary assets load directly from origin — avoids corruption but sites can frame-bust.';
+      }
     }
 
     // ─── Address Bar Sync ───
@@ -1306,17 +1344,26 @@
       }
     });
 
+    proxyModeSelect.addEventListener('change', () => {
+      proxyMode = proxyModeSelect.value;
+      saveProxyConfig();
+      updateProxyUI();
+      toast('Proxy mode: ' + proxyMode);
+    });
+
     // ─── Iframe URL sync via postMessage ───
     window.addEventListener('message', (e) => {
       if (e.data && e.data.type === 'pluto-url') {
         const msgUrl = e.data.url;
         if (!msgUrl) return;
-        // Extract the original URL from the proxy URL
+        // Extract the original URL from the proxy URL (strip &mode= param)
         let originalUrl = msgUrl;
         const proxyPrefix = proxyServerUrl + '/proxy?url=';
         if (msgUrl.startsWith(proxyPrefix)) {
           try {
-            originalUrl = decodeURIComponent(msgUrl.slice(proxyPrefix.length));
+            const afterPrefix = msgUrl.slice(proxyPrefix.length);
+            const ampIdx = afterPrefix.indexOf('&');
+            originalUrl = decodeURIComponent(ampIdx === -1 ? afterPrefix : afterPrefix.slice(0, ampIdx));
           } catch { return; }
         }
         const tab = getActiveTab();
